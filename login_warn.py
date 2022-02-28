@@ -1,11 +1,18 @@
 import requests
 import datetime
 import os
-import random
+import random, time
 import subprocess
 from telegram_credentials import TELEGRAM_API_TOKEN, \
                                  TELEGRAM_USERS_TO_NOTIFY, \
                                  TELEGRAM_USERS_AUTHORIZED
+
+from telegram.ext import Updater, CallbackQueryHandler
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+updater = Updater(token=TELEGRAM_API_TOKEN)
+bot = updater.bot
+dispatcher = updater.dispatcher
+
 
 # ----- NOTIFY THE USER -----
 # Get env variables
@@ -26,22 +33,46 @@ notify_text = "A new user has just logged on your server as " + username +\
     "date_of_login = " + port + "\n"
 
 # send the message to every user on the specified list
-for id in TELEGRAM_USERS_TO_NOTIFY:
-    requests.get("https://api.telegram.org/bot" + str(TELEGRAM_API_TOKEN)
-                 + "/sendMessage?chat_id=" + str(id) + "&text=" + str(notify_text))
+for id_ in TELEGRAM_USERS_TO_NOTIFY:
+    bot.send_message(chat_id=id_, text=notify_text)
 
 # ----- 2FA AUTH THE USER -----
 # clear the screen
 os.system("clear")
 try:
     authcode = str(random.randint(0, 99999999))
-    for id in TELEGRAM_USERS_AUTHORIZED:
-        requests.get("https://api.telegram.org/bot" + str(TELEGRAM_API_TOKEN)
-                     + "/sendMessage?chat_id=" + str(id) + "&text=" +
-                     "Your 2FA code to login on " + str(server_ip) + " is " + str(authcode))
-    login_code = input("Insert the code that we sent to your telegram account: ")
-    if login_code != authcode:
-        os.system("logout")
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("Authenticate", callback_data="1"),
+                                          InlineKeyboardButton("Cancel", callback_data="0")]])
+    for id_ in TELEGRAM_USERS_AUTHORIZED:
+        bot.send_message(chat_id=id_, text="Would you like to authorize the login on " + str(server_ip) + "?",
+                         reply_markup=reply_markup)
+    time.sleep(20)
+    if os.getenv(authcode) == "1":
+        os.system("clear")
+        print("Login authorized!")
+        os.system("clear")
+    else:
+        raise ValueError
 
 except KeyboardInterrupt:
-    os.system("logout")
+    subprocess.run("killall ssh", shell=True)
+    subprocess.run("systemctl start sshd", shell=True)
+
+def callback_query_handler(update, dispatcher):
+    query = update.callback_query
+    query.answer()
+    if query.data == "1":
+        bot.send_message(chat_id=query.message.chat_id, text="Authentication successful")
+        os.environ[authcode] = "1"
+    elif query.data == 0:
+        bot.send_message(chat_id=query.message.chat_id, text="Canceled")
+        subprocess.run("killall ssh", shell=True)
+        subprocess.run("systemctl start sshd", shell=True)
+    else:
+        bot.send_message(chat_id=query.message.chat_id, text="Wrong auth choice")
+        subprocess.run("killall ssh", shell=True)
+        subprocess.run("systemctl start sshd", shell=True)
+
+
+dispatcher.add_handler(CallbackQueryHandler(callback_query_handler))
+
