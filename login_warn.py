@@ -4,8 +4,7 @@ import os
 import random, time
 import subprocess
 from telegram_credentials import TELEGRAM_API_TOKEN, \
-                                 TELEGRAM_USERS_TO_NOTIFY, \
-                                 TELEGRAM_USERS_AUTHORIZED
+                                 TELEGRAM_USERS_TO_NOTIFY
 
 telegram_url = "https://api.telegram.org/bot" + TELEGRAM_API_TOKEN \
                + "/sendMessage?chat_id="
